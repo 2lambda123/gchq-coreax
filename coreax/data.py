@@ -207,17 +207,17 @@ class Data(eqx.Module):
         the ones vector (implies a scalar weight of one);
     """
 
-    data: Shaped[Array, " n d"]
+    data: Shaped[Array, " n *d"]
     weights: Shaped[Array, " n"]
 
     def __init__(
         self,
-        data: Shaped[ArrayLike, " n d"],
+        data: Shaped[ArrayLike, " n *d"],
         weights: Shaped[ArrayLike, " n"] | None = None,
     ):
         """Initialise Data class."""
-        self.data = jnp.atleast_2d(data)
-        n = self.data.shape[0]
+        self.data = jnp.asarray(data)
+        n = self.data.shape[:1]
         self.weights = jnp.broadcast_to(1 if weights is None else weights, n)
 
     def __jax_array__(self) -> Shaped[ArrayLike, " n d"]:
