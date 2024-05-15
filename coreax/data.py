@@ -220,6 +220,10 @@ class Data(eqx.Module):
         n = self.data.shape[0]
         self.weights = jnp.broadcast_to(1 if weights is None else weights, n)
 
+    def __jax_array__(self) -> Shaped[ArrayLike, " n d"]:
+        """Register ArrayLike behaviour - return value for `jnp.asarray(Data(...))`."""
+        return self.data
+
     def __len__(self):
         """Return data length."""
         return len(self.data)
