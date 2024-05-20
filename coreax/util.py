@@ -118,7 +118,6 @@ def pairwise(
     return pairwise_fn
 
 
-@jit
 def squared_distance(x: ArrayLike, y: ArrayLike) -> Array:
     """
     Calculate the squared distance between two vectors.

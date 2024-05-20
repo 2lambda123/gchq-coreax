@@ -38,157 +38,13 @@ copy of a coreset, call :meth:`format() <DataReader.format>` on a subclass to re
 # Support annotations with | in Python < 3.10
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import Any, TypeVar
 
 import equinox as eqx
 import jax.numpy as jnp
+import jax.tree_util as jtu
 from jax.typing import ArrayLike
 from jaxtyping import Array, Shaped
-
-if TYPE_CHECKING:
-    import coreax.reduction
-
-
-class DataReader(ABC):
-    """
-    Class to apply pre- and post-processing to data.
-
-    :param original_data: Array of data to be reduced to a coreset
-    :param pre_coreset_array: Two-dimensional array already rearranged to be ready for
-        calculating a coreset
-    """
-
-    def __init__(self, original_data: ArrayLike, pre_coreset_array: ArrayLike):
-        """
-        Initialise class.
-
-        Should not normally be called by the user: use :meth:`load` instead.
-        """
-        self.original_data: Array = jnp.atleast_2d(original_data)
-        """
-        Original data
-        """
-        self.pre_coreset_array: Array = jnp.atleast_2d(pre_coreset_array)
-        """
-        Pre coreset array
-        """
-
-    @classmethod
-    @abstractmethod
-    def load(cls, original_data: ArrayLike) -> DataReader:
-        """
-        Construct :class:`DataReader` from an array of original data.
-
-        This class method restructures the original data into the layout required for
-        :class:`~coreax.reduction.Coreset`.
-
-        The user should not normally initialise this class directly; instead use this
-        constructor.
-
-        :param original_data: Array of data to be reduced to a coreset
-        :return: Populated instance of :class:`DataReader`
-        """
-
-    @abstractmethod
-    def format(self, coreset: coreax.reduction.Coreset) -> Array:
-        """
-        Format coreset to match the shape of the original data.
-
-        If the number of columns was reduced by :meth:`reduce_dimension`, it will be
-        reverted by this method via a call to :meth:`restore_dimension`.
-
-        :param coreset: Coreset to format
-        :return: Array of coreset in format matching original data
-        """
-
-    def render(self, coreset: coreax.reduction.Coreset | None) -> None:
-        """
-        Plot coreset or original data interactively using :mod:`~matplotlib.pyplot`.
-
-        This method is only implemented when applicable for the data type.
-
-        :param coreset: Coreset to plot, or :data:`None` to plot original data
-        """
-        raise NotImplementedError
-
-    def reduce_dimension(self, num_dimensions: int) -> None:
-        """
-        Reduce dimensionality of :attr:`~coreax.data.DataReader.pre_coreset_array`.
-
-        Performed using principal component analysis (PCA).
-
-        :attr:`~coreax.data.DataReader.pre_coreset_array` is updated in place. Metadata
-        detailing the type of reduction are saved to this class to enable reconstruction
-        later.
-
-        :param num_dimensions: Target number of dimensions
-        """
-        raise NotImplementedError
-
-    def restore_dimension(self, coreset: coreax.reduction.Coreset | None) -> Array:
-        """
-        Expand principal components into original number of columns in two dimensions.
-
-        Some data will have been lost due to reduction in dimensionality, so the
-        restored data will not exactly match the original data.
-
-        Call :meth:`format` instead to restore to multiple dimensions if the original
-        data format had more than two dimensions.
-
-        :param coreset: Coreset to restore, or :data:`None` to restore original data
-        :return: Array with the same number of columns as
-            :attr:`~coreax.data.DataReader.pre_coreset_array` had prior to calling
-            :meth:`reduce_dimension` and the same number of rows as the coreset
-        """
-        raise NotImplementedError
-
-
-class ArrayData(DataReader):
-    """
-    Class to apply pre- and post-processing to two-dimensional array data.
-
-    Data should already be in a format accepted by :class:`~coreax.reduction.Coreset`.
-    Thus, if no dimensionality reduction is performed, this class is an identity
-    wrapper and :attr:`~coreax.data.DataReader.pre_coreset_array` is equal to
-    :attr:`~coreax.data.DataReader.original_data`.
-
-    :param original_data: Array of data to be reduced to a coreset
-    :param pre_coreset_array: Two-dimensional array already rearranged to be ready for
-        calculating a coreset
-    """
-
-    @classmethod
-    def load(cls, original_data: ArrayLike) -> ArrayData:
-        """
-        Construct :class:`ArrayData` from a two-dimensional array of data.
-
-        This constructor does not modify the provided data.
-
-        The user should not normally initialise this class directly; instead use this
-        constructor.
-
-        :param original_data: Array of data to be reduced to a coreset
-        :return: Populated instance of :class:`ArrayData`
-        """
-        original_data = jnp.atleast_2d(original_data)
-        return cls(original_data, original_data)
-
-    def format(self, coreset: coreax.reduction.Coreset) -> Array:
-        """
-        Format coreset to match the shape of the original data.
-
-        As the original data was already in the required format for
-        :class:`~coreax.reduction.Coreset`, no reformatting takes place.
-
-        If the number of columns was reduced by
-        :meth:`~coreax.data.DataReader.reduce_dimension`, it will be reverted by this
-        method via a call to :meth:`~coreax.data.DataReader.restore_dimension`.
-
-        :param coreset: Coreset to format
-        :return: Array of coreset in format matching original data
-        """
-        return coreset.coreset
 
 
 class Data(eqx.Module):
@@ -220,6 +76,10 @@ class Data(eqx.Module):
         n = self.data.shape[:1]
         self.weights = jnp.broadcast_to(1 if weights is None else weights, n)
 
+    def __getitem__(self, key: Any):
+        """Array indexing behaviour."""
+        return jtu.tree_map(lambda x: x[key], self)
+
     def __jax_array__(self) -> Shaped[ArrayLike, " n d"]:
         """Register ArrayLike behaviour - return value for `jnp.asarray(Data(...))`."""
         return self.data
@@ -232,6 +92,14 @@ class Data(eqx.Module):
         """Return a copy of 'self' with 'weights' that sum to one."""
         normalized_weights = self.weights / jnp.sum(self.weights)
         return eqx.tree_at(lambda x: x.weights, self, normalized_weights)
+
+
+_Data = TypeVar("_Data", bound=Data)
+
+
+def as_data(x: Any, data_type: type[_Data] = Data) -> _Data:
+    """Cast 'x' to a data instance."""
+    return x if isinstance(x, data_type) else data_type(x)
 
 
 def is_data(x: Any | Data):

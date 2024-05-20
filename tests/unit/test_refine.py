@@ -52,35 +52,6 @@ class TestRefine:
 
     random_key = jr.key(0)
 
-    # Disable pylint warning for protected-access as we are testing a single part of
-    # the over-arching algorithm ``coreax.refine.Refine._validate_coreset``.
-    # pylint: disable=protected-access
-    def test_validate_coreset_ok(self):
-        """Check validation passes with populated coresubset."""
-        coreset = CoresetMock()
-        coreset.original_data = coreax.data.ArrayData.load(1)
-        coreset.coreset = jnp.array(1)
-        coreset.coreset_indices = jnp.array(0)
-        coreax.refine.Refine._validate_coreset(coreset)
-
-    def test_validate_coreset_no_fit(self):
-        """Check validation fails when coreset has not been calculated."""
-        coreset = CoresetMock()
-        coreset.original_data = coreax.data.ArrayData.load(1)
-        with pytest.raises(coreax.util.NotCalculatedError):
-            coreax.refine.Refine._validate_coreset(coreset)
-
-    def test_validate_coreset_not_coresubset(self):
-        """Check validation raises TypeError when not a coresubset."""
-        coreset = CoresetMock()
-        coreset.original_data = coreax.data.ArrayData.load(1)
-        coreset.coreset = jnp.array(1)
-
-        with pytest.raises(TypeError):
-            coreax.refine.Refine._validate_coreset(coreset)
-
-    # pylint: enable=protected-access
-
 
 class _RefineProblem(NamedTuple):
     array: Array
@@ -190,72 +161,3 @@ class RefineTestCase(ABC):
             assert any(
                 set(coreset_obj.coreset_indices.tolist()) == i for i in best_indices
             )
-
-
-class TestRefineRegular(RefineTestCase):
-    """Tests related to :meth:`~coreax.refine.RefineRegular`."""
-
-    @pytest.fixture
-    def refine_method(self):
-        return coreax.refine.RefineRegular()
-
-
-class TestRefineRandom(RefineTestCase):
-    """Tests related to :meth:`~coreax.refine.RefineRandom`."""
-
-    @pytest.fixture
-    def refine_method(self):
-        return coreax.refine.RefineRandom(self.random_key, p=1.0)
-
-    def test_zero_original_data_points(self):
-        """
-        Test how RefineRandom handles a coreset with no original data to refine with.
-        """
-        original_array = jnp.asarray([])
-        coreset_indices = jnp.array([])
-        kernel = coreax.kernel.SquaredExponentialKernel()
-        coreset_obj = CoresetMock(weights_optimiser=None, kernel=kernel)
-        coreset_obj.coreset_indices = coreset_indices
-        coreset_obj.original_data = coreax.data.ArrayData.load(original_array)
-        coreset_obj.coreset = jnp.asarray([])
-        coreset_obj.gramian_row_mean = None
-
-        # Attempt to refine a coreset by considering no original data points
-        # which should try to divide by 0 and raise a value error highlighting
-        # the root cause
-        refine_random = coreax.refine.RefineRandom(self.random_key, p=0.5)
-        with pytest.raises(ValueError, match="must not be empty"):
-            refine_random.refine(coreset=coreset_obj)
-
-    @pytest.mark.parametrize("p", [0, -0.5, 1.5])
-    def test_original_data_proportion(self, p: float):
-        """
-        Test RefineRandom on different (degenerate) original data sampling proportions.
-
-        ``p`` should be capped at ``1``, and an error raised for ``p <= 0``.
-        """
-        original_array = jnp.asarray([[0, 0], [1, 1], [2, 2]])
-        test_indices = [2, 2]
-        coreset_indices = jnp.array(test_indices)
-        kernel = coreax.kernel.SquaredExponentialKernel()
-        coreset_obj = CoresetMock(weights_optimiser=None, kernel=kernel)
-        coreset_obj.coreset_indices = coreset_indices
-        coreset_obj.original_data = coreax.data.ArrayData.load(original_array)
-        coreset_obj.coreset = original_array[coreset_indices, :]
-        coreset_obj.gramian_row_mean = None
-
-        refine_random = coreax.refine.RefineRandom(self.random_key, p=p)
-        if p <= 0:
-            with pytest.raises(ValueError, match="input p must be greater than 0"):
-                refine_random.refine(coreset=coreset_obj)
-        else:
-            refine_random.refine(coreset=coreset_obj)
-            assert refine_random.p == min(p, 1.0)
-
-
-class TestRefineReverse(RefineTestCase):
-    """Tests related to :meth:`~coreax.refine.RefineReverse`."""
-
-    @pytest.fixture
-    def refine_method(self):
-        return coreax.refine.RefineReverse()

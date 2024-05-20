@@ -8,7 +8,7 @@ import numpy as np
 from jax.experimental.shard_map import shard_map
 from sklearn.neighbors import KDTree
 
-from coreax.coreset import Coreset, Coresubset
+from coreax.coresets import Coreset, Coresubset
 from coreax.data import Data
 from coreax.solvers.base import Solver
 

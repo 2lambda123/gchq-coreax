@@ -4,7 +4,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import pytest
 
-from coreax.coreset import Coreset, Coresubset
+from coreax.coresets import Coreset, Coresubset
 from coreax.data import Data
 
 NODES = Data(jnp.arange(5, dtype=jnp.int32)[..., None])
@@ -27,6 +27,15 @@ class TestCoresetCommon:
         coreset_data_nodes = coreset_type(NODES, PRE_CORESET_DATA)
         assert coreset_array_nodes == coreset_data_nodes
 
+    def test_check_init(self, coreset_type):
+        pre_coreset_data = PRE_CORESET_DATA[: len(NODES) - 1]
+        assert len(NODES) > len(PRE_CORESET_DATA)
+        with pytest.raises(
+            ValueError,
+            match="'len(nodes)' cannot be greater than 'len(pre_coreset_data)'",
+        ):
+            coreset_type(NODES, pre_coreset_data)
+
     def test_materialization(self, coreset_type):
         """Test the coreset materialisation behaviour."""
         coreset = coreset_type(NODES, PRE_CORESET_DATA)
@@ -34,7 +43,7 @@ class TestCoresetCommon:
         if isinstance(coreset, Coresubset):
             materialized_nodes = PRE_CORESET_DATA.data[NODES.data.squeeze()]
             expected_materialization = Data(materialized_nodes)
-        assert expected_materialization == coreset.coreset
+        assert coreset.coreset == expected_materialization
 
     def test_len(self, coreset_type):
         """Test the coreset length."""

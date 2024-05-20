@@ -58,9 +58,8 @@ from coreax.approximation import (
     MonteCarloApproximateKernel,
     NystromApproximateKernel,
 )
-from coreax.coreset import Coreset, Coresubset
-from coreax.coresubset import KernelHerding, RandomSample, RPCholesky, SteinThinning
-from coreax.data import ArrayData, Data, SupervisedData
+from coreax.coresets import Coreset, Coresubset
+from coreax.data import Data, SupervisedData
 from coreax.kernel import (
     CompositeKernel,
     Kernel,
@@ -70,7 +69,6 @@ from coreax.kernel import (
     SteinKernel,
 )
 from coreax.metrics import MMD
-from coreax.reduction import MapReduce, SizeReduce
 from coreax.score_matching import KernelDensityMatching, SlicedScoreMatching
 
 # pylint: enable=unused-import

@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module containing coreset solvers."""
+"""
+Module containing coreset solvers.
+
+- explicitly specified coreset size
+- implicity specified coreset size (tolerance base coreset construction)
+- algorithm sepecified coreset size
+"""
 from abc import abstractmethod
 from typing import Generic, TypeVar
 
@@ -22,36 +28,35 @@ from coreax.coresets import Coreset, Coresubset
 from coreax.data import Data
 
 _Data = TypeVar("_Data", bound=Data)
-_Coreset = TypeVar("_Coreset", Coreset, Coresubset)
-_SolverState = TypeVar("_SolverState")
+_Coreset = TypeVar("_Coreset", bound=Coreset)
+_State = TypeVar("_State")
 
 
-class Solver(eqx.Module, Generic[_Data, _Coreset]):
+class Solver(eqx.Module, Generic[_Coreset, _Data, _State]):
     """
     Base class for coreset solvers.
 
     Solver is generic on the type of data required by the reduce method, and the type of
-    coreset returned, providing a convenient means to distringuish between solvers that
+    coreset returned, providing a convenient means to distinguish between solvers that
     take (weighted) data/supervised data, and those which produce coresets/coresubsets.
     """
 
     @abstractmethod
     def reduce(
-        self, coreset_size: int, dataset: _Data, solver_state: _SolverState
-    ) -> tuple[_Coreset, _SolverState]:
-        """
-        Reduce a dataset to a coreset - solve the coreset problem.
+        self, dataset: _Data, solver_state: _State | None = None
+    ) -> tuple[_Coreset, _State]:
+        r"""
+        Reduce 'dataset' to a coreset - solve the coreset problem.
 
-        :param coreset_size: The desired size of the solved coreset
         :param dataset: The (potentially weighted and supervised) data to generate the
             coreset from
         :param solver_state: Solution state information, primarily used to cache
-            expensive intermediate solution step values.
-        :return: a solved coreset and relevant intermediate solver state information
+            expensive intermediate solution step information
+        :return: a tuple of the solved coreset and intermediate solver state information
         """
 
 
-class CoresubsetSolver(Solver[_Data, Coresubset], Generic[_Data]):
+class CoresubsetSolver(Solver[Coresubset, _Data, _State], Generic[_Data, _State]):
     """
     Solver which returns a :class:`coreax.coreset.Coresubset`.
 
@@ -59,9 +64,9 @@ class CoresubsetSolver(Solver[_Data, Coresubset], Generic[_Data]):
     """
 
 
-class RefinementSolver(CoresubsetSolver[_Data], Generic[_Data]):
+class RefinementSolver(CoresubsetSolver[_Data, _State], Generic[_Data, _State]):
     """
-    A :class:`coreax.solvers.CoresubsetSolver` which supports refinement.
+    A :class:`CoresubsetSolver` which supports refinement.
 
     Some solvers assume implicitly/explicitly an initial coresubset on which the
     solution is dependant. Such solvers can be interpreted as refining the initial
@@ -73,13 +78,28 @@ class RefinementSolver(CoresubsetSolver[_Data], Generic[_Data]):
 
     @abstractmethod
     def refine(
-        self, coreset: Coreset | Coresubset, solver_state: _SolverState
-    ) -> tuple[Coresubset, _SolverState]:
+        self, coresubset: Coresubset, solver_state: _State | None = None
+    ) -> tuple[Coresubset, _State]:
         """
-        Refine a coreset - swap/update coresubset indices.
+        Refine a coresubset - swap/update coresubset indices.
 
         :param coresubset: The coresubset to refine
         :param solver_state: Solution state information, primarily used to cache
             expensive intermediate solution step values.
         :return: a refined coresubset and relevant intermediate solver state information
         """
+
+
+class ExplicitSizeSolver(Solver):
+    """
+    A :class:`Solver` which produces a coreset of an explictily specified size.
+
+    :param coreset_size: The desired size of the solved coreset
+    """
+
+    coreset_size: int = eqx.field(converter=int)
+
+    def __check_init__(self):
+        """Check that 'coreset_size' is feasible."""
+        if self.coreset_size <= 0:
+            raise ValueError("'coreset_size' must be a positive integer")
